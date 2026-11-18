@@ -2,7 +2,6 @@ const express = require('express');
 const ffmpeg = require('fluent-ffmpeg');
 const path = require('path');
 const fs = require('fs');
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args)); // যদি node-fetch v3 ব্যবহার করেন
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,7 +12,7 @@ app.get('/', (req, res) => {
     res.send('FFmpeg Local Merger API is running!');
 });
 
-// হেল্পার ফাংশন: রিমোট ফাইল লোকাল ফোল্ডারে ডাউনলোড করার জন্য
+// হেল্পার ফাংশন: বিল্ট-ইন fetch ব্যবহার করে রিমোট ফাইল লোকাল ফোল্ডারে ডাউনলোড করা
 async function downloadFile(url, outputPath) {
     const res = await fetch(url, {
         headers: {
@@ -25,9 +24,27 @@ async function downloadFile(url, outputPath) {
     
     const fileStream = fs.createWriteStream(outputPath);
     await new Promise((resolve, reject) => {
-        res.body.pipe(fileStream);
-        res.body.on('error', reject);
-        fileStream.on('finish', resolve);
+        const bodyStream = res.body;
+        // Node.js এর stream pipeline বা pipe ব্যবহার করে লেখা
+        if (bodyStream.pipe) {
+            bodyStream.pipe(fileStream);
+            bodyStream.on('error', reject);
+            fileStream.on('finish', resolve);
+        } else {
+            // Web Stream হ্যান্ডেল করার জন্য
+            const reader = bodyStream.getReader();
+            async function pump() {
+                const { done, value } = await reader.read();
+                if (done) {
+                    fileStream.end();
+                    return;
+                }
+                fileStream.write(value);
+                return pump();
+            }
+            pump().catch(reject);
+            fileStream.on('finish', resolve);
+        }
     });
 }
 
@@ -47,7 +64,6 @@ app.get('/merge', async (req, res) => {
     try {
         console.log('Downloading video and audio streams locally...');
         
-        // ১. একসাথে বা ধাপে ধাপে ভিডিও ও অডিও ডাউনলোড করা
         await Promise.all([
             downloadFile(videoUrl, videoPath),
             downloadFile(audioUrl, audioPath)
@@ -55,7 +71,6 @@ app.get('/merge', async (req, res) => {
 
         console.log('Merging local files with FFmpeg...');
 
-        // ২. লোকাল ফাইল দুটি FFmpeg দিয়ে মার্জ করা
         await new Promise((resolve, reject) => {
             ffmpeg()
                 .input(videoPath)
@@ -72,11 +87,9 @@ app.get('/merge', async (req, res) => {
 
         console.log('Merge finished successfully!');
 
-        // ৩. ইউজারের ব্রাউজারে ফাইল ডাউনলোড করিয়ে দেওয়া
         res.download(outputPath, 'merged_video.mp4', (err) => {
             if (err) console.error('Download error:', err);
             
-            // সব টেম্পোরারি ফাইল ডিলিট করে সার্ভার ক্লিন রাখা
             [videoPath, audioPath, outputPath].forEach(file => {
                 if (fs.existsSync(file)) fs.unlinkSync(file);
             });
@@ -85,7 +98,6 @@ app.get('/merge', async (req, res) => {
     } catch (err) {
         console.error('Process error:', err.message);
         
-        // কোনো এরর হলে টেম্পোরারি ফাইলগুলো মুছে ফেলা
         [videoPath, audioPath, outputPath].forEach(file => {
             if (fs.existsSync(file)) fs.unlinkSync(file);
         });
