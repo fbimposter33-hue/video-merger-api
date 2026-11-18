@@ -14,11 +14,6 @@ app.get('/', (req, res) => {
 
 // হেল্পার ফাংশন: সঠিক কুকি এবং হেডার সহ ফাইল ডাউনলোড করার জন্য
 async function downloadFile(url, outputPath) {
-    // লক্ষ্য করুন: ডাউলোড লিংক থেকে মূল সাইটের ডোমেইন বা কুকির জন্য একটি ইনিশিয়াল রিকোয়েস্ট বা কুকি হ্যান্ডেল করা লাগতে পারে
-    // তবে এখানে স্ন্যাপাইটের মূল সাইট থেকে কুকি সংগ্রহ করে তারপর ডাউনলোড করা সবচেয়ে নিরাপদ
-    
-    // প্রথমে স্ন্যাপাইট হোমপেজ বা কুকি পাওয়ার জন্য একটি রিকোয়েস্ট করা যেতে পারে, 
-    // অথবা সরাসরি হেডারে ব্রাউজারের মতো কুকি ও হেডার পাঠানো:
     const res = await fetch(url, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -110,9 +105,7 @@ app.get('/merge', async (req, res) => {
             });
         });
 
-    } x (err => {
-        // syntax fix for catch
-    }) catch (err) {
+    } catch (err) {
         console.error('Process error:', err.message);
         
         [videoPath, audioPath, outputPath].forEach(file => {
