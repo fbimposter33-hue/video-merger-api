@@ -2,6 +2,7 @@ const express = require('express');
 const ffmpeg = require('fluent-ffmpeg');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,13 +22,26 @@ app.get('/merge', async (req, res) => {
     }
 
     const outputFileName = `output_${Date.now()}.mp4`;
-    const outputPath = path.join('/tmp', outputFileName); // রেন্ডারে /tmp ফোল্ডার ব্যবহার করা নিরাপদ
+    const outputPath = path.join('/tmp', outputFileName);
 
-    console.log('Downloading and merging streams with FFmpeg...');
+    console.log('Merging streams with custom headers...');
+
+    // স্ন্যাপাইট সার্ভারের জন্য প্রয়োজনীয় হেডার্স
+    const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Referer': 'https://www.snapyt.app/',
+        'Origin': 'https://www.snapyt.app'
+    };
 
     ffmpeg()
         .input(videoUrl)
+        .inputOptions([
+            '-headers', Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\r\n')
+        ])
         .input(audioUrl)
+        .inputOptions([
+            '-headers', Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\r\n')
+        ])
         .outputOptions([
             '-c:v copy',
             '-c:a aac',
