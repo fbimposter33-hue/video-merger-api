@@ -12,40 +12,55 @@ app.get('/', (req, res) => {
     res.send('FFmpeg Local Merger API is running!');
 });
 
-// হেল্পার ফাংশন: বিল্ট-ইন fetch ব্যবহার করে রিমোট ফাইল লোকাল ফোল্ডারে ডাউনলোড করা
+// হেল্পার ফাংশন: সঠিক কুকি এবং হেডার সহ ফাইল ডাউনলোড করার জন্য
 async function downloadFile(url, outputPath) {
+    // লক্ষ্য করুন: ডাউলোড লিংক থেকে মূল সাইটের ডোমেইন বা কুকির জন্য একটি ইনিশিয়াল রিকোয়েস্ট বা কুকি হ্যান্ডেল করা লাগতে পারে
+    // তবে এখানে স্ন্যাপাইটের মূল সাইট থেকে কুকি সংগ্রহ করে তারপর ডাউনলোড করা সবচেয়ে নিরাপদ
+    
+    // প্রথমে স্ন্যাপাইট হোমপেজ বা কুকি পাওয়ার জন্য একটি রিকোয়েস্ট করা যেতে পারে, 
+    // অথবা সরাসরি হেডারে ব্রাউজারের মতো কুকি ও হেডার পাঠানো:
     const res = await fetch(url, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'Referer': 'https://www.snapyt.app/'
+            'Referer': 'https://www.snapyt.app/',
+            'Origin': 'https://www.snapyt.app',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1'
         }
     });
+
     if (!res.ok) throw new Error(`Failed to fetch ${url} - Status: ${res.status}`);
     
     const fileStream = fs.createWriteStream(outputPath);
-    await new Promise((resolve, reject) => {
-        const bodyStream = res.body;
-        // Node.js এর stream pipeline বা pipe ব্যবহার করে লেখা
-        if (bodyStream.pipe) {
-            bodyStream.pipe(fileStream);
+    const bodyStream = res.body;
+
+    if (bodyStream.pipe) {
+        bodyStream.pipe(fileStream);
+        await new Promise((resolve, reject) => {
             bodyStream.on('error', reject);
             fileStream.on('finish', resolve);
-        } else {
-            // Web Stream হ্যান্ডেল করার জন্য
-            const reader = bodyStream.getReader();
-            async function pump() {
-                const { done, value } = await reader.read();
-                if (done) {
-                    fileStream.end();
-                    return;
+        });
+    } else {
+        const reader = bodyStream.getReader();
+        await new Promise(async (resolve, reject) => {
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    fileStream.write(value);
                 }
-                fileStream.write(value);
-                return pump();
+                fileStream.end();
+                resolve();
+            } catch (err) {
+                reject(err);
             }
-            pump().catch(reject);
-            fileStream.on('finish', resolve);
-        }
-    });
+        });
+    }
 }
 
 app.get('/merge', async (req, res) => {
@@ -62,7 +77,7 @@ app.get('/merge', async (req, res) => {
     const outputPath = path.join('/tmp', `output_${timestamp}.mp4`);
 
     try {
-        console.log('Downloading video and audio streams locally...');
+        console.log('Downloading video and audio streams locally with full headers...');
         
         await Promise.all([
             downloadFile(videoUrl, videoPath),
@@ -95,7 +110,9 @@ app.get('/merge', async (req, res) => {
             });
         });
 
-    } catch (err) {
+    } x (err => {
+        // syntax fix for catch
+    }) catch (err) {
         console.error('Process error:', err.message);
         
         [videoPath, audioPath, outputPath].forEach(file => {
